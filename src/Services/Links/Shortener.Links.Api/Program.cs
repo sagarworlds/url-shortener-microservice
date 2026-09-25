@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Shortener.Links.Api.Endpoints;
 using Shortener.Links.Api.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -6,9 +7,14 @@ var builder = WebApplication.CreateBuilder(args);
 builder.AddServiceDefaults();
 builder.AddLinksInfrastructure();
 
+builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+
 var app = builder.Build();
 
 app.MapDefaultEndpoints();
+app.UseExceptionHandler();
+app.MapLinkEndpoints();
 
 if (app.Environment.IsDevelopment())
 {
