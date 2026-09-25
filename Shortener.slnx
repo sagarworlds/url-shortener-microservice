@@ -7,6 +7,10 @@
   <Folder Name="/src/Services/Redirect/">
     <Project Path="src/Services/Redirect/Shortener.Redirect.Api/Shortener.Redirect.Api.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Shortener.IntegrationTests/Shortener.IntegrationTests.csproj" />
+    <Project Path="tests/Shortener.Links.UnitTests/Shortener.Links.UnitTests.csproj" />
+  </Folder>
   <Project Path="Shortener.AppHost/Shortener.AppHost.csproj" />
   <Project Path="Shortener.ServiceDefaults/Shortener.ServiceDefaults.csproj" />
 </Solution>
