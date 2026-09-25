@@ -1,2 +1,4 @@
 <Solution>
+  <Project Path="Shortener.AppHost/Shortener.AppHost.csproj" />
+  <Project Path="Shortener.ServiceDefaults/Shortener.ServiceDefaults.csproj" />
 </Solution>
