@@ -1,4 +1,12 @@
 <Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/Services/" />
+  <Folder Name="/src/Services/Links/">
+    <Project Path="src/Services/Links/Shortener.Links.Api/Shortener.Links.Api.csproj" />
+  </Folder>
+  <Folder Name="/src/Services/Redirect/">
+    <Project Path="src/Services/Redirect/Shortener.Redirect.Api/Shortener.Redirect.Api.csproj" />
+  </Folder>
   <Project Path="Shortener.AppHost/Shortener.AppHost.csproj" />
   <Project Path="Shortener.ServiceDefaults/Shortener.ServiceDefaults.csproj" />
 </Solution>
