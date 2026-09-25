@@ -9,4 +9,14 @@
     <UserSecretsId>4d963ec6-b5db-4596-b6cd-dd3f772b1e7a</UserSecretsId>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.PostgreSQL" />
+    <PackageReference Include="Aspire.Hosting.Redis" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\src\Services\Links\Shortener.Links.Api\Shortener.Links.Api.csproj" />
+    <ProjectReference Include="..\src\Services\Redirect\Shortener.Redirect.Api\Shortener.Redirect.Api.csproj" />
+  </ItemGroup>
+
 </Project>
