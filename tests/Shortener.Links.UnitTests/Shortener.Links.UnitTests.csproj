@@ -18,4 +18,8 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Services\Links\Shortener.Links.Api\Shortener.Links.Api.csproj" />
+  </ItemGroup>
+
 </Project>
