@@ -1,9 +1,10 @@
+using Shortener.Contracts;
 using Shortener.Links.Api.Domain;
 
 namespace Shortener.Links.Api.Application;
 
 /// <summary>Handles the delete-link-by-code use case.</summary>
-public sealed class DeleteLinkHandler(ILinkRepository repository)
+public sealed class DeleteLinkHandler(ILinkRepository repository, TimeProvider timeProvider)
 {
     /// <summary>Deletes a link by its short code.</summary>
     /// <param name="code">
@@ -20,7 +21,8 @@ public sealed class DeleteLinkHandler(ILinkRepository repository)
             return DeleteLinkResult.NotFound();
         }
 
-        var deleted = await repository.DeleteByCodeAsync(codeResult.Value!, cancellationToken);
+        var deletedEvent = new LinkDeleted(Guid.NewGuid(), codeResult.Value!.Value, timeProvider.GetUtcNow());
+        var deleted = await repository.DeleteByCodeAsync(codeResult.Value!, deletedEvent, cancellationToken);
         return deleted ? DeleteLinkResult.Deleted() : DeleteLinkResult.NotFound();
     }
 }

@@ -1,3 +1,4 @@
+using Shortener.Contracts;
 using Shortener.Links.Api.Domain;
 
 namespace Shortener.Links.Api.Application;
@@ -39,14 +40,14 @@ public sealed class CreateLinkHandler(
             }
 
             var link = CreateLink(aliasResult.Value!, urlResult.Value!, request.ExpiresAt);
-            var added = await repository.TryAddAsync(link, cancellationToken);
+            var added = await repository.TryAddAsync(link, CreatedEventFor(link), cancellationToken);
             return added ? CreateLinkResult.Created(link) : CreateLinkResult.AliasTaken();
         }
 
         for (var attempt = 0; attempt < MaxGenerationAttempts; attempt++)
         {
             var link = CreateLink(codeGenerator.Generate(), urlResult.Value!, request.ExpiresAt);
-            if (await repository.TryAddAsync(link, cancellationToken))
+            if (await repository.TryAddAsync(link, CreatedEventFor(link), cancellationToken))
             {
                 return CreateLinkResult.Created(link);
             }
@@ -57,4 +58,7 @@ public sealed class CreateLinkHandler(
 
     private Link CreateLink(ShortCode code, DestinationUrl url, DateTimeOffset? expiresAt) =>
         new(Guid.NewGuid(), code, url, timeProvider.GetUtcNow(), expiresAt);
+
+    private LinkCreated CreatedEventFor(Link link) =>
+        new(Guid.NewGuid(), link.Code.Value, link.DestinationUrl.Value.ToString(), link.ExpiresAt, link.CreatedAt);
 }
