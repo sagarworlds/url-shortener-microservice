@@ -19,4 +19,9 @@ builder.AddProject<Projects.Shortener_Redirect_Api>("redirect")
     .WithReference(messaging)
     .WaitFor(redis);
 
+builder.AddProject<Projects.Shortener_Analytics_Api>("analytics")
+    .WithReference(analyticsDb)
+    .WaitFor(analyticsDb)
+    .WithReference(messaging);
+
 builder.Build().Run();

@@ -18,6 +18,7 @@
   <ItemGroup>
     <ProjectReference Include="..\src\Services\Links\Shortener.Links.Api\Shortener.Links.Api.csproj" />
     <ProjectReference Include="..\src\Services\Redirect\Shortener.Redirect.Api\Shortener.Redirect.Api.csproj" />
+    <ProjectReference Include="..\src\Services\Analytics\Shortener.Analytics.Api\Shortener.Analytics.Api.csproj" />
   </ItemGroup>
 
 </Project>

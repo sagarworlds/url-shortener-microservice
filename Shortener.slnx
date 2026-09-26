@@ -3,6 +3,9 @@
     <Project Path="src/Shortener.Contracts/Shortener.Contracts.csproj" />
   </Folder>
   <Folder Name="/src/Services/" />
+  <Folder Name="/src/Services/Analytics/">
+    <Project Path="src/Services/Analytics/Shortener.Analytics.Api/Shortener.Analytics.Api.csproj" />
+  </Folder>
   <Folder Name="/src/Services/Links/">
     <Project Path="src/Services/Links/Shortener.Links.Api/Shortener.Links.Api.csproj" />
   </Folder>
