@@ -1,19 +1,17 @@
-using System.Text.Json;
 using Polly.CircuitBreaker;
 using Polly.Timeout;
 using Shortener.Redirect.Api.Application;
-using StackExchange.Redis;
 
 namespace Shortener.Redirect.Api.Infrastructure;
 
 /// <summary>
-/// Resolves short codes by checking Redis first and falling back to Links
-/// over HTTP on a miss. Used until M3 replaces it with a
+/// Resolves short codes by checking the cache first and falling back to
+/// Links over HTTP on a miss. Used until M3 replaces it with a
 /// <c>ReadModelLinkResolver</c> fed by <c>LinkCreated</c>/<c>LinkDeleted</c>
 /// events instead of a direct HTTP dependency on Links.
 /// </summary>
-public sealed class CacheAsideLinkResolver(
-    IConnectionMultiplexer redis,
+internal sealed class CacheAsideLinkResolver(
+    ILinkCache cache,
     LinksClient linksClient,
     TimeProvider timeProvider,
     ILogger<CacheAsideLinkResolver> logger) : ILinkResolver
@@ -24,18 +22,13 @@ public sealed class CacheAsideLinkResolver(
     /// <summary>How long a not-found or expired outcome is cached, to absorb repeat lookups without hammering Links.</summary>
     internal static readonly TimeSpan NegativeTtl = TimeSpan.FromSeconds(60);
 
-    private static string CacheKey(string code) => $"link:{code}";
-
     /// <inheritdoc />
     public async Task<LinkResolution> ResolveAsync(string code, CancellationToken cancellationToken)
     {
-        var database = redis.GetDatabase();
-        var key = CacheKey(code);
-
-        var cached = await database.StringGetAsync(key);
-        if (cached.HasValue)
+        var cached = await cache.GetAsync(code, cancellationToken);
+        if (cached is not null)
         {
-            return ToResolution(Deserialize(cached!));
+            return ToResolution(cached);
         }
 
         LinkDetails? link;
@@ -53,31 +46,34 @@ public sealed class CacheAsideLinkResolver(
 
         if (link is null)
         {
-            await database.StringSetAsync(key, Serialize(CachedLink.NotFound), NegativeTtl);
+            await cache.SetAsync(code, CachedLinkEntry.NotFound, NegativeTtl, cancellationToken);
             return LinkResolution.NotFound();
         }
 
         var now = timeProvider.GetUtcNow();
         if (link.ExpiresAt is { } expiresAt && expiresAt <= now)
         {
-            await database.StringSetAsync(key, Serialize(CachedLink.Expired), NegativeTtl);
+            await cache.SetAsync(code, CachedLinkEntry.Expired, NegativeTtl, cancellationToken);
             return LinkResolution.Expired();
         }
 
-        var ttl = link.ExpiresAt is { } notExpiredAt ? Min(MaxFoundTtl, notExpiredAt - now) : MaxFoundTtl;
-        await database.StringSetAsync(key, Serialize(CachedLink.Found(link.Url)), ttl);
+        var ttl = ComputeFoundTtl(link.ExpiresAt, now);
+        await cache.SetAsync(code, CachedLinkEntry.Found(link.Url), ttl, cancellationToken);
         return LinkResolution.Found(new Uri(link.Url));
     }
 
-    private static TimeSpan Min(TimeSpan a, TimeSpan b) => a < b ? a : b;
+    /// <summary>
+    /// The cache duration for a found link: the time remaining until its
+    /// expiry, capped at <see cref="MaxFoundTtl"/>, or the cap itself for a
+    /// link with no expiry.
+    /// </summary>
+    /// <param name="expiresAt">The link's expiry, or <see langword="null"/> if it never expires.</param>
+    /// <param name="now">The current instant.</param>
+    /// <returns>How long the found result should be cached.</returns>
+    internal static TimeSpan ComputeFoundTtl(DateTimeOffset? expiresAt, DateTimeOffset now) =>
+        expiresAt is { } value && value - now < MaxFoundTtl ? value - now : MaxFoundTtl;
 
-    private static string Serialize(CachedLink entry) => JsonSerializer.Serialize(entry);
-
-    private static CachedLink Deserialize(string value) =>
-        JsonSerializer.Deserialize<CachedLink>(value)
-            ?? throw new InvalidOperationException($"Corrupt cache entry: '{value}'.");
-
-    private static LinkResolution ToResolution(CachedLink entry) => entry.Status switch
+    private static LinkResolution ToResolution(CachedLinkEntry entry) => entry.Status switch
     {
         CachedLinkStatus.Found => LinkResolution.Found(new Uri(entry.DestinationUrl!)),
         CachedLinkStatus.Expired => LinkResolution.Expired(),

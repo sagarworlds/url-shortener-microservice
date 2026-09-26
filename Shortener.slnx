@@ -10,6 +10,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/Shortener.IntegrationTests/Shortener.IntegrationTests.csproj" />
     <Project Path="tests/Shortener.Links.UnitTests/Shortener.Links.UnitTests.csproj" />
+    <Project Path="tests/Shortener.Redirect.UnitTests/Shortener.Redirect.UnitTests.csproj" />
   </Folder>
   <Project Path="Shortener.AppHost/Shortener.AppHost.csproj" />
   <Project Path="Shortener.ServiceDefaults/Shortener.ServiceDefaults.csproj" />

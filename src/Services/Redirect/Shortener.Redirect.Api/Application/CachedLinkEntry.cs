@@ -1,4 +1,4 @@
-namespace Shortener.Redirect.Api.Infrastructure;
+namespace Shortener.Redirect.Api.Application;
 
 /// <summary>The cached outcome for a short code: found, absent, or expired.</summary>
 internal enum CachedLinkStatus
@@ -13,19 +13,19 @@ internal enum CachedLinkStatus
     Expired,
 }
 
-/// <summary>Redis cache payload for a short code's resolution.</summary>
+/// <summary><see cref="ILinkCache"/> payload for a short code's resolution.</summary>
 /// <param name="Status">Which outcome was cached.</param>
 /// <param name="DestinationUrl">The destination URL when <paramref name="Status"/> is <see cref="CachedLinkStatus.Found"/>; otherwise <see langword="null"/>.</param>
-internal sealed record CachedLink(CachedLinkStatus Status, string? DestinationUrl)
+internal sealed record CachedLinkEntry(CachedLinkStatus Status, string? DestinationUrl)
 {
     /// <summary>Creates a cache entry for a live destination.</summary>
     /// <param name="url">The destination URL.</param>
     /// <returns>A <see cref="CachedLinkStatus.Found"/> entry.</returns>
-    public static CachedLink Found(string url) => new(CachedLinkStatus.Found, url);
+    public static CachedLinkEntry Found(string url) => new(CachedLinkStatus.Found, url);
 
     /// <summary>The cache entry for a code with no link.</summary>
-    public static CachedLink NotFound { get; } = new(CachedLinkStatus.NotFound, null);
+    public static CachedLinkEntry NotFound { get; } = new(CachedLinkStatus.NotFound, null);
 
     /// <summary>The cache entry for a code whose link has expired.</summary>
-    public static CachedLink Expired { get; } = new(CachedLinkStatus.Expired, null);
+    public static CachedLinkEntry Expired { get; } = new(CachedLinkStatus.Expired, null);
 }

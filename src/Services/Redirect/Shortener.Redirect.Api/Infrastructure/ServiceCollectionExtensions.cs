@@ -22,6 +22,7 @@ public static class ServiceCollectionExtensions
         });
 
         builder.Services.AddSingleton(TimeProvider.System);
+        builder.Services.AddSingleton<ILinkCache, RedisLinkCache>();
         builder.Services.AddScoped<ILinkResolver, CacheAsideLinkResolver>();
 
         return builder;
