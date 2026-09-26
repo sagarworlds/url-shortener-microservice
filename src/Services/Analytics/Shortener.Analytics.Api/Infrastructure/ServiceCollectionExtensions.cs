@@ -14,6 +14,7 @@ public static class ServiceCollectionExtensions
     public static IHostApplicationBuilder AddAnalyticsInfrastructure(this IHostApplicationBuilder builder)
     {
         builder.AddNpgsqlDbContext<AnalyticsDbContext>("analyticsdb");
+        builder.AddRabbitMQClient("messaging");
 
         builder.Services.AddScoped<EfClickStore>();
         builder.Services.AddScoped<IClickRecorder>(sp => sp.GetRequiredService<EfClickStore>());
@@ -21,6 +22,8 @@ public static class ServiceCollectionExtensions
 
         builder.Services.AddScoped<RecordClickHandler>();
         builder.Services.AddScoped<GetClickStatsHandler>();
+
+        builder.Services.AddHostedService<ClickEventConsumer>();
 
         return builder;
     }
