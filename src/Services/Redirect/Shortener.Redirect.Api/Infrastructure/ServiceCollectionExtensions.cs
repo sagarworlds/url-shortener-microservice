@@ -8,9 +8,12 @@ namespace Shortener.Redirect.Api.Infrastructure;
 public static class ServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers the Redis client, the typed <see cref="LinksClient"/> (routed
-    /// through Aspire service discovery to <c>links</c>), and the
-    /// <see cref="CacheAsideLinkResolver"/> that ties them together.
+    /// Registers the Redis client, the <see cref="ReadModelLinkResolver"/>
+    /// that reads its read model, the <see cref="LinkEventConsumer"/> that
+    /// feeds it from Links' outbox, and click-event publishing. M1's
+    /// <c>CacheAsideLinkResolver</c>/<c>ILinkCache</c>/<c>LinksClient</c>
+    /// stay in the codebase, unregistered — swapping <c>ILinkResolver</c>'s
+    /// implementation back is a one-line change if ever needed.
     /// </summary>
     /// <param name="builder">The host builder.</param>
     /// <returns><paramref name="builder"/>, for chaining.</returns>
@@ -19,14 +22,10 @@ public static class ServiceCollectionExtensions
         builder.AddRedisClient("redis");
         builder.AddRabbitMQClient("messaging");
 
-        builder.Services.AddHttpClient<LinksClient>(client =>
-        {
-            client.BaseAddress = new Uri("https+http://links");
-        });
-
         builder.Services.AddSingleton(TimeProvider.System);
-        builder.Services.AddSingleton<ILinkCache, RedisLinkCache>();
-        builder.Services.AddScoped<ILinkResolver, CacheAsideLinkResolver>();
+        builder.Services.AddSingleton<IReadModelStore, RedisReadModelStore>();
+        builder.Services.AddScoped<ILinkResolver, ReadModelLinkResolver>();
+        builder.Services.AddHostedService<LinkEventConsumer>();
 
         // Bounded so a slow or down broker can never build up unbounded
         // memory; ChannelClickPublisher drops and logs a warning once full.
