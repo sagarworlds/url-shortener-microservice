@@ -3,7 +3,7 @@
 | Milestone | Scope | Status |
 | --- | --- | --- |
 | M1 | Links + Redirect over HTTP | Done |
-| M2 | Analytics service and click events over RabbitMQ | Not started |
+| M2 | Analytics service and click events over RabbitMQ | Done |
 | M3 | Transactional outbox and event-fed Redirect read model | Not started |
 | M4 | YARP gateway, Keycloak auth, rate limiting | Not started |
 | M5 | CI, container images, deployment | Not started |
@@ -128,11 +128,43 @@ Branch: `SP/feature/m2-analytics-events`
 - Analytics: the consumer must be idempotent because delivery is at-least-once. Keep a `processed_events` table with a unique `EventId`, written in the same transaction as the aggregate update. Store daily counts per code. `GET /analytics/{code}` returns total and per-day clicks.
 
 Done when:
-- [ ] Clicks appear in `GET /analytics/{code}` within seconds.
-- [ ] With Analytics stopped, redirects are unaffected, messages pile up in the queue (visible in the RabbitMQ management UI), and they're processed after a restart.
-- [ ] Redelivering the same message doesn't double-count.
+- [x] Clicks appear in `GET /analytics/{code}` within seconds.
+- [x] With Analytics stopped, redirects are unaffected, messages pile up in the queue (visible in the RabbitMQ management UI), and they're processed after a restart.
+- [x] Redelivering the same message doesn't double-count.
 
 ### Observations
+
+Verified with Docker running: full test suite green (28 Links unit + 9
+Redirect unit + 4 Analytics unit + 2 integration tests), including a new
+integration test that clicks a link through Redirect and polls
+`GET /analytics/{code}` until the click shows up (took well under 10s).
+
+**Experiment A** (stop `analytics` via `ResourceCommandService`, same
+technique as M1): with one click already recorded, stopping Analytics and
+then clicking the same link 3 more times returned **302** every time —
+redirects are completely unaffected by Analytics being down, since
+publishing is fire-and-forget through the bounded channel. After restarting
+Analytics, `GET /analytics/{code}` caught up to **4** total clicks
+(confirming the 3 clicks made while it was down had queued in RabbitMQ
+rather than being lost, and were processed once Analytics came back).
+
+**Experiment B** (redeliver the same message): published one
+`LinkClicked` payload with a fixed `EventId` directly to the `link-clicks`
+exchange **twice** in a row, then polled and re-checked `GET /analytics/{code}`.
+Result: **1**, not 2. The second insert into `processed_events` hits the
+`EventId` unique constraint, the whole `SaveChangesAsync` call rolls back
+(including the `DailyClickCount` increment queued alongside it), and
+`TryRecordAsync` reports it as already-processed — exactly the
+transaction-covers-both-writes design from the plan, with no separate
+check-then-write step to race.
+
+One practical wrinkle worth recording: `WaitForResourceHealthyAsync("analytics")`
+confirms the health endpoint responds, not that `ClickEventConsumer`'s own
+queue/exchange/binding setup (which isn't gated by health checks) has
+finished — a message published immediately after can be silently dropped
+by RabbitMQ if the queue isn't bound yet. Not an issue in the real
+AppHost/dashboard flow (there's always a human-scale gap before anyone
+clicks a link), but worth knowing if this ever gets scripted again.
 
 ---
 
