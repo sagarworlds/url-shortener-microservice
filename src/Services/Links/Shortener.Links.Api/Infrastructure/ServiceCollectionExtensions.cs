@@ -14,14 +14,18 @@ public static class ServiceCollectionExtensions
     public static IHostApplicationBuilder AddLinksInfrastructure(this IHostApplicationBuilder builder)
     {
         builder.AddNpgsqlDbContext<LinksDbContext>("linksdb");
+        builder.AddRabbitMQClient("messaging");
 
         builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddSingleton<IShortCodeGenerator, RandomShortCodeGenerator>();
         builder.Services.AddScoped<ILinkRepository, EfLinkRepository>();
+        builder.Services.AddScoped<IOutboxStore, EfOutboxStore>();
 
         builder.Services.AddScoped<CreateLinkHandler>();
         builder.Services.AddScoped<GetLinkHandler>();
         builder.Services.AddScoped<DeleteLinkHandler>();
+
+        builder.Services.AddHostedService<OutboxDispatcher>();
 
         return builder;
     }
