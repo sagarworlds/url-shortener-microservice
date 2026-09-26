@@ -24,6 +24,7 @@ public static class ServiceCollectionExtensions
         builder.Services.AddScoped<CreateLinkHandler>();
         builder.Services.AddScoped<GetLinkHandler>();
         builder.Services.AddScoped<DeleteLinkHandler>();
+        builder.Services.AddScoped<BackfillOutboxHandler>();
 
         builder.Services.AddHostedService<OutboxDispatcher>();
 

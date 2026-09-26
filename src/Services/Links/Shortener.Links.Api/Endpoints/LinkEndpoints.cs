@@ -15,6 +15,7 @@ public static class LinkEndpoints
         endpoints.MapPost("/links", CreateLinkAsync);
         endpoints.MapGet("/links/{code}", GetLinkAsync);
         endpoints.MapDelete("/links/{code}", DeleteLinkAsync);
+        endpoints.MapPost("/links/backfill", BackfillAsync);
 
         return endpoints;
     }
@@ -69,6 +70,12 @@ public static class LinkEndpoints
             : Results.Problem(statusCode: StatusCodes.Status404NotFound, title: "Link not found");
     }
 
+    private static async Task<IResult> BackfillAsync(BackfillOutboxHandler handler, CancellationToken cancellationToken)
+    {
+        var count = await handler.HandleAsync(cancellationToken);
+        return Results.Ok(new BackfillResponse(count));
+    }
+
     // The Location header (set by Results.Created above) points at this
     // Links API's own GET /links/{code} resource. ShortUrl is the public,
     // user-facing redirect address; until M4's gateway gives every service
@@ -93,3 +100,7 @@ public sealed record CreateLinkBody(string Url, string? Alias, DateTimeOffset? E
 /// <param name="Url">The destination URL.</param>
 /// <param name="ExpiresAt">When the link stops resolving, or <see langword="null"/> if it never expires.</param>
 public sealed record LinkResponse(string Code, string ShortUrl, string Url, DateTimeOffset? ExpiresAt);
+
+/// <summary>Response body for <c>POST /links/backfill</c>.</summary>
+/// <param name="Backfilled">How many links were backfilled.</param>
+public sealed record BackfillResponse(int Backfilled);
