@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Shortener.Analytics.Api.Endpoints;
 using Shortener.Analytics.Api.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -6,9 +7,14 @@ var builder = WebApplication.CreateBuilder(args);
 builder.AddServiceDefaults();
 builder.AddAnalyticsInfrastructure();
 
+builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+
 var app = builder.Build();
 
 app.MapDefaultEndpoints();
+app.UseExceptionHandler();
+app.MapAnalyticsEndpoints();
 
 if (app.Environment.IsDevelopment())
 {
