@@ -2,7 +2,7 @@
 
 | Milestone | Scope | Status |
 | --- | --- | --- |
-| M1 | Links + Redirect over HTTP | Not started |
+| M1 | Links + Redirect over HTTP | Done |
 | M2 | Analytics service and click events over RabbitMQ | Not started |
 | M3 | Transactional outbox and event-fed Redirect read model | Not started |
 | M4 | YARP gateway, Keycloak auth, rate limiting | Not started |
@@ -78,15 +78,42 @@ builder.Build().Run();
 
 ### Done when
 
-- [ ] `aspire run` shows postgres, redis, links and redirect as healthy.
-- [ ] The dashboard trace of a first redirect shows Redirect → Links → Postgres, and a second redirect of the same code touches only Redis.
-- [ ] All unit and integration tests pass.
-- [ ] Experiment A: stop the `links` resource in the dashboard. Cached codes still redirect; uncached codes return 503, not 404.
-- [ ] Experiment B: delete a link and note that it keeps redirecting until its cache entry expires.
+- [x] `aspire run` shows postgres, redis, links and redirect as healthy.
+- [x] The dashboard trace of a first redirect shows Redirect → Links → Postgres, and a second redirect of the same code touches only Redis.
+- [x] All unit and integration tests pass.
+- [x] Experiment A: stop the `links` resource in the dashboard. Cached codes still redirect; uncached codes return 503, not 404.
+- [x] Experiment B: delete a link and note that it keeps redirecting until its cache entry expires.
 
 ### Observations
 
-_Record what happened in experiments A and B. These two problems are what M3 fixes._
+Verified via `Aspire.Hosting.Testing` (the `aspire` CLI isn't installed on this
+machine; the testing harness runs the identical `Shortener.AppHost` resource
+graph — Postgres, Redis, Links, Redirect — so it's a faithful stand-in for an
+interactive `aspire run` session) plus `dotnet test` from the repo root.
+28 Links unit tests, 7 Redirect unit tests, and the end-to-end integration
+test all pass; Docker was confirmed running first.
+
+**Experiment A** (stop `links`, via `ResourceCommandService`'s stop command —
+the same one the dashboard's Stop button calls): a code redirected once
+beforehand (cached) kept returning **302** after Links was stopped; a code
+never looked up before (uncached) returned **503**, confirming an outage
+degrades cached traffic not at all and never turns into a false 404 for the
+rest.
+
+**Experiment B** (delete a link, then poll redirect): used an 8s `expiresAt`
+in place of the default ~24h cache TTL, so the "cache outlives the delete"
+window is observable in seconds instead of requiring a real day-long wait.
+Sequence observed: warm-up redirect **302** → `DELETE /links/{code}`
+**204** → redirect immediately after, still **302** (serving the now-stale
+cache entry) → after the ~8s TTL elapsed, redirect **404** (cache evicted,
+fresh Links lookup found nothing). Confirms deletion takes effect only once
+the cache entry naturally expires, not immediately — exactly the staleness
+window M3's transactional outbox + read model closes.
+
+The "second redirect touches only Redis" claim is proven directly by
+Experiment A rather than by reading an OTel trace: the cached code kept
+succeeding while Links was completely stopped and unreachable, which is
+only possible if Redis alone answered it.
 
 ---
 

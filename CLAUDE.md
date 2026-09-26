@@ -39,6 +39,7 @@ src/
     Analytics/Shortener.Analytics.Api/   M2
 tests/
   Shortener.Links.UnitTests/
+  Shortener.Redirect.UnitTests/
   Shortener.IntegrationTests/    Aspire.Hosting.Testing
 ```
 
