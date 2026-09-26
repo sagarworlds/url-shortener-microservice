@@ -2,9 +2,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\..\Shortener.ServiceDefaults\Shortener.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\..\..\Shortener.Contracts\Shortener.Contracts.csproj" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Aspire.RabbitMQ.Client" />
     <PackageReference Include="Aspire.StackExchange.Redis" />
   </ItemGroup>
 

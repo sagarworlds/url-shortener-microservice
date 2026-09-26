@@ -1,3 +1,5 @@
+using System.Threading.Channels;
+using Shortener.Contracts;
 using Shortener.Redirect.Api.Application;
 
 namespace Shortener.Redirect.Api.Infrastructure;
@@ -15,6 +17,7 @@ public static class ServiceCollectionExtensions
     public static IHostApplicationBuilder AddRedirectInfrastructure(this IHostApplicationBuilder builder)
     {
         builder.AddRedisClient("redis");
+        builder.AddRabbitMQClient("messaging");
 
         builder.Services.AddHttpClient<LinksClient>(client =>
         {
@@ -24,6 +27,14 @@ public static class ServiceCollectionExtensions
         builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddSingleton<ILinkCache, RedisLinkCache>();
         builder.Services.AddScoped<ILinkResolver, CacheAsideLinkResolver>();
+
+        // Bounded so a slow or down broker can never build up unbounded
+        // memory; ChannelClickPublisher drops and logs a warning once full.
+        var clickChannel = Channel.CreateBounded<LinkClicked>(1_000);
+        builder.Services.AddSingleton(clickChannel.Writer);
+        builder.Services.AddSingleton(clickChannel.Reader);
+        builder.Services.AddSingleton<IClickPublisher, ChannelClickPublisher>();
+        builder.Services.AddHostedService<ClickEventForwarder>();
 
         return builder;
     }
