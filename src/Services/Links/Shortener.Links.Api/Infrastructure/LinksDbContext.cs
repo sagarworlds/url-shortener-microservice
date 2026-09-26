@@ -10,6 +10,9 @@ public sealed class LinksDbContext(DbContextOptions<LinksDbContext> options) : D
     /// <summary>The links table.</summary>
     public DbSet<Link> Links => Set<Link>();
 
+    /// <summary>Events awaiting dispatch to RabbitMQ.</summary>
+    internal DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
+
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -33,6 +36,19 @@ public sealed class LinksDbContext(DbContextOptions<LinksDbContext> options) : D
 
             entity.Property(link => link.CreatedAt).IsRequired();
             entity.Property(link => link.ExpiresAt);
+        });
+
+        modelBuilder.Entity<OutboxMessage>(entity =>
+        {
+            entity.ToTable("outbox_messages");
+            entity.HasKey(message => message.Id);
+            entity.Property(message => message.Type).IsRequired();
+            entity.Property(message => message.Payload).IsRequired();
+            entity.Property(message => message.OccurredAt).IsRequired();
+            entity.Property(message => message.DispatchedAt);
+
+            // The dispatcher's poll query is always "WHERE DispatchedAt IS NULL".
+            entity.HasIndex(message => message.DispatchedAt);
         });
     }
 }
