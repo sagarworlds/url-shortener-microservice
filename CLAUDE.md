@@ -40,6 +40,7 @@ src/
 tests/
   Shortener.Links.UnitTests/
   Shortener.Redirect.UnitTests/
+  Shortener.Analytics.UnitTests/
   Shortener.IntegrationTests/    Aspire.Hosting.Testing
 ```
 
