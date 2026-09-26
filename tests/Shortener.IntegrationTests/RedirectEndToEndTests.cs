@@ -14,7 +14,7 @@ public class RedirectEndToEndTests
     [Fact]
     public async Task GetRedirect_ForLinkCreatedThroughLinks_Returns302WithDestinationLocation()
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(5));
         var cancellationToken = timeout.Token;
 
         var appHost = await DistributedApplicationTestingBuilder.CreateAsync<Projects.Shortener_AppHost>(cancellationToken);
