@@ -25,6 +25,11 @@ var analytics = builder.AddProject<Projects.Shortener_Analytics_Api>("analytics"
     .WaitFor(analyticsDb)
     .WithReference(messaging);
 
+var keycloak = builder.AddContainer("keycloak", "quay.io/keycloak/keycloak")
+    .WithArgs("start-dev", "--import-realm")
+    .WithBindMount("./KeycloakConfiguration", "/opt/keycloak/data/import")
+    .WithHttpEndpoint(port: 8080, targetPort: 8080, name: "http");
+
 builder.AddProject<Projects.Shortener_Gateway>("gateway")
     .WithReference(links)
     .WithReference(redirect)
