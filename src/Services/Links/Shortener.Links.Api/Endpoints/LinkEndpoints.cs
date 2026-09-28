@@ -26,7 +26,8 @@ public static class LinkEndpoints
         CreateLinkHandler handler,
         CancellationToken cancellationToken)
     {
-        var request = new CreateLinkRequest(body.Url, body.Alias, body.ExpiresAt);
+        var ownerId = httpRequest.Headers["X-User-Id"].FirstOrDefault();
+        var request = new CreateLinkRequest(body.Url, body.Alias, body.ExpiresAt, ownerId);
         var result = await handler.HandleAsync(request, cancellationToken);
 
         return result.Status switch
@@ -51,7 +52,8 @@ public static class LinkEndpoints
         GetLinkHandler handler,
         CancellationToken cancellationToken)
     {
-        var result = await handler.HandleAsync(code, cancellationToken);
+        var callerId = httpRequest.Headers["X-User-Id"].FirstOrDefault();
+        var result = await handler.HandleAsync(code, callerId, cancellationToken);
 
         return result.IsFound
             ? Results.Ok(ToResponse(result.Link!, httpRequest))
@@ -60,10 +62,12 @@ public static class LinkEndpoints
 
     private static async Task<IResult> DeleteLinkAsync(
         string code,
+        HttpRequest httpRequest,
         DeleteLinkHandler handler,
         CancellationToken cancellationToken)
     {
-        var result = await handler.HandleAsync(code, cancellationToken);
+        var callerId = httpRequest.Headers["X-User-Id"].FirstOrDefault();
+        var result = await handler.HandleAsync(code, callerId, cancellationToken);
 
         return result.WasDeleted
             ? Results.NoContent()

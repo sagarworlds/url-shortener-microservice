@@ -11,9 +11,14 @@ public sealed class GetLinkHandler(ILinkRepository repository)
     /// alphabet) can never match a link, so it is treated the same as an
     /// unmatched well-formed one: not found.
     /// </param>
+    /// <param name="callerId">
+    /// The authenticated user's identity, or <see langword="null"/> for
+    /// direct (unauthenticated) calls. When set, links owned by a
+    /// different user appear as not found.
+    /// </param>
     /// <param name="cancellationToken">Cancels the operation.</param>
     /// <returns>The outcome of the lookup.</returns>
-    public async Task<GetLinkResult> HandleAsync(string code, CancellationToken cancellationToken)
+    public async Task<GetLinkResult> HandleAsync(string code, string? callerId, CancellationToken cancellationToken)
     {
         var codeResult = ShortCode.Create(code);
         if (!codeResult.IsValid)
@@ -22,6 +27,16 @@ public sealed class GetLinkHandler(ILinkRepository repository)
         }
 
         var link = await repository.GetByCodeAsync(codeResult.Value!, cancellationToken);
-        return link is null ? GetLinkResult.NotFound() : GetLinkResult.Found(link);
+        if (link is null)
+        {
+            return GetLinkResult.NotFound();
+        }
+
+        if (callerId is not null && link.OwnerId is not null && link.OwnerId != callerId)
+        {
+            return GetLinkResult.NotFound();
+        }
+
+        return GetLinkResult.Found(link);
     }
 }
