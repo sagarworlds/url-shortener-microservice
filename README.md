@@ -1,88 +1,99 @@
 # URL Shortener
 
-A microservices-based URL shortener built with **.NET 10** and **.NET Aspire**, designed as a hands-on learning project for distributed systems patterns: service discovery, event-driven architecture, transactional outbox, CQRS read models, API gateway, and JWT authentication.
+A microservices-based URL shortener built with **.NET 10** and **.NET Aspire**. It is a learning project for distributed-systems patterns: service discovery, event-driven messaging, the transactional outbox, event-fed read models, an API gateway and JWT authentication.
 
 ## Architecture
 
-```
-                        +-----------+
-                        |  Gateway  |  YARP reverse proxy
-                        |  (Auth,   |  JWT validation
-                        |  Rate     |  Rate limiting
-                        |  Limit)   |  X-User-Id forwarding
-                        +-----+-----+
-                              |
-              +---------------+---------------+
-              |               |               |
-        +-----+-----+  +-----+-----+  +------+------+
-        | Links API  |  |  Redirect |  |  Analytics  |
-        | CRUD ops   |  |  302 hot  |  |  Click stats|
-        | Outbox     |  |  path     |  |  Event      |
-        | publisher  |  |           |  |  consumer   |
-        +-----+------+  +-----+----+  +------+------+
-              |               |               |
-         +----+----+     +----+----+     +----+----+
-         |linksdb  |     |  Redis  |     |analytics|
-         |Postgres |     |         |     |  db     |
-         +---------+     +---------+     +---------+
-              |                               |
-              +--------> RabbitMQ <-----------+
-                     link-events exchange
+```mermaid
+flowchart LR
+    client([Client])
+    keycloak["Keycloak<br/>identity provider"]
+    gateway["Gateway<br/>YARP, JWT auth, rate limiting"]
+    links["Links API"]
+    redirect["Redirect API"]
+    analytics["Analytics API"]
+    linksdb[("Postgres<br/>linksdb")]
+    redis[("Redis<br/>read model")]
+    analyticsdb[("Postgres<br/>analyticsdb")]
+    mq{{"RabbitMQ"}}
+
+    client --> gateway
+    gateway -.->|"validates JWTs"| keycloak
+    gateway -->|"/api/links"| links
+    gateway -->|"/api/analytics"| analytics
+    gateway -->|"anonymous redirects"| redirect
+    links --> linksdb
+    redirect --> redis
+    analytics --> analyticsdb
+    links -->|"LinkCreated, LinkDeleted"| mq
+    mq -->|"link-events"| redirect
+    mq -->|"link-events"| analytics
+    redirect -->|"LinkClicked"| mq
+    mq -->|"link-clicks"| analytics
 ```
 
-| Service | Responsibility | Data Store | Milestone |
-|---------|---------------|------------|-----------|
-| **Links API** | Create, read, delete short links; transactional outbox | Postgres `linksdb` | M1, M3 |
-| **Redirect API** | `GET /{code}` returns 302; event-fed Redis read model | Redis | M1, M3 |
-| **Analytics API** | Consume `LinkClicked` events, serve per-day click stats | Postgres `analyticsdb` | M2 |
-| **Gateway** | YARP entry point, Keycloak JWT auth, per-user rate limiting | none | M4 |
+The three services never call each other. The Gateway is the only component that talks to them over HTTP; everything else flows through RabbitMQ. Links writes `LinkCreated` and `LinkDeleted` events to a transactional outbox and publishes them to the `link-events` exchange, which Redirect and Analytics consume. Redirect publishes `LinkClicked` events to the `link-clicks` exchange for Analytics.
+
+| Service | Responsibility | Data store |
+|---------|----------------|------------|
+| **Links API** | Create, read and delete short links; publishes link events through a transactional outbox | Postgres `linksdb` |
+| **Redirect API** | `GET /{code}` answers with a 302; resolves codes from an event-fed read model | Redis |
+| **Analytics API** | Consumes `LinkClicked` events, serves per-day click stats, enforces link ownership | Postgres `analyticsdb` |
+| **Gateway** | YARP entry point with Keycloak JWT validation and per-user rate limiting | none |
 
 Supporting projects:
-- **Shortener.AppHost** -- Aspire orchestration (Postgres, Redis, RabbitMQ, Keycloak, all services)
-- **Shortener.ServiceDefaults** -- OpenTelemetry, health checks, service discovery, resilience
-- **Shortener.Contracts** -- Integration event records (`LinkCreated`, `LinkClicked`, `LinkDeleted`)
+
+- **Shortener.AppHost** — Aspire orchestration for local development (Postgres, Redis, RabbitMQ, Keycloak and every service)
+- **Shortener.ServiceDefaults** — shared OpenTelemetry, health checks, service discovery and HTTP resilience
+- **Shortener.Contracts** — integration event records (`LinkCreated`, `LinkDeleted`, `LinkClicked`)
 
 ## Key Patterns Demonstrated
 
-- **Database per service** -- each service owns its data store; no cross-service database access
-- **Transactional outbox** (M3) -- link changes are atomically written with outbox messages, then published to RabbitMQ by a background dispatcher
-- **Event-driven read model** (M3) -- Redirect consumes `LinkCreated`/`LinkDeleted` events to maintain a Redis read model, decoupling it from Links at runtime
-- **Idempotent consumers** (M2) -- Analytics deduplicates events via a `processed_events` table in the same transaction as the aggregate update
-- **API gateway with YARP** (M4) -- single entry point with config-based routing and Aspire service discovery destination resolution
-- **JWT authentication** (M4) -- Keycloak issues tokens; Gateway validates and forwards `sub` as `X-User-Id`; backends enforce resource ownership
-- **Per-user rate limiting** (M4) -- fixed-window policy (10 requests/min) on link creation
-- **Cache-aside with graceful degradation** (M1) -- Redirect caches links in Redis; when Links is unreachable, cached codes still work, uncached return 503 (never a false 404)
+- **Database per service** — each service owns its data store; no service touches another's database.
+- **Transactional outbox** (M3) — a link change is written in the same transaction as an outbox message, which a background dispatcher then publishes to RabbitMQ (at-least-once delivery).
+- **Event-fed read model** (M3) — Redirect builds its own Redis read model from `LinkCreated` and `LinkDeleted` events, so it never calls Links and keeps redirecting while Links is down.
+- **Idempotent consumers** (M2) — Analytics records each event ID in a `processed_events` table in the same transaction as the counter update, so a redelivered message is never counted twice.
+- **Ownership projection** (M4) — Analytics maintains its own `link_owners` table from link events, so it can restrict stats to the link's owner without querying the Links database.
+- **API gateway with YARP** (M4) — a single entry point with config-based routing and Aspire service-discovery destinations.
+- **JWT authentication** (M4) — Keycloak issues tokens; the Gateway validates them and forwards the user's `sub` claim as `X-User-Id` (discarding any client-supplied value); the services enforce ownership.
+- **Per-user rate limiting** (M4) — a fixed window of 10 link creations per minute per user.
+- **Graceful degradation** — if Redirect cannot reach Redis it answers 503, never a misleading 404.
 
 ## Prerequisites
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (for Postgres, Redis, RabbitMQ, Keycloak)
-- [.NET Aspire workload](https://learn.microsoft.com/en-us/dotnet/aspire/fundamentals/setup-tooling)
-
-```bash
-dotnet workload install aspire
-```
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/), which runs the Postgres, Redis, RabbitMQ and Keycloak containers
+- Optional: the Aspire CLI, if you prefer `aspire run` to `dotnet run`
 
 ## Getting Started
 
-1. **Clone the repository**
+**1. Clone the repository**
 
 ```bash
-git clone https://github.com/your-username/url-shortener.git
-cd url-shortener
+git clone https://github.com/sagarworlds/url-shortener-microservice.git
+cd url-shortener-microservice
 ```
 
-2. **Start Docker Desktop**
+**2. Make sure Docker is running**
 
-3. **Run the system**
+**3. Start the system**
+
+```bash
+aspire run
+```
+
+Or, without the Aspire CLI:
 
 ```bash
 dotnet run --project Shortener.AppHost
 ```
 
-This starts all services and infrastructure (Postgres, Redis, RabbitMQ, Keycloak) via Aspire. Open the dashboard URL printed in the terminal to see resource health, traces, and logs.
+The console prints the Aspire dashboard URL, where you can follow resource health, logs and distributed traces. The first run pulls the container images, so it can take a few minutes. Once everything is healthy:
 
-4. **Run the tests**
+- The Gateway, the public entry point, listens on `http://localhost:5295` by default (the dashboard shows the exact endpoint).
+- Keycloak listens on `http://localhost:8080`.
+
+**4. Run the tests**
 
 ```bash
 dotnet test
@@ -90,95 +101,108 @@ dotnet test
 
 ## API Reference
 
-All endpoints are accessed through the Gateway (default: `http://localhost:5000`).
+All requests go through the Gateway; the examples below use `GATEWAY=http://localhost:5295`. Creating and deleting links, reading link details and reading analytics require a JWT, while redirects are anonymous. A link can only be read, deleted or inspected by the user who created it. Anyone else gets a `404`, so a link's existence is never revealed.
+
+### Getting a token
+
+Keycloak imports a ready-made realm on startup ([`shortener-realm.json`](Shortener.AppHost/KeycloakConfiguration/shortener-realm.json)): realm `shortener`, public client `shortener-api` with the password grant enabled, and two throwaway development users.
+
+| Username | Password |
+|----------|----------|
+| `alice` | `alice` |
+| `bob` | `bob` |
+
+```bash
+export GATEWAY=http://localhost:5295
+
+export TOKEN=$(curl -s http://localhost:8080/realms/shortener/protocol/openid-connect/token \
+  -d grant_type=password -d client_id=shortener-api \
+  -d username=alice -d password=alice | jq -r .access_token)
+```
+
+The snippet uses [`jq`](https://jqlang.org) to extract the token from the JSON response.
 
 ### Links
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| `POST` | `/api/links` | Required | Create a short link |
-| `GET` | `/api/links/{code}` | Required | Get link details |
-| `DELETE` | `/api/links/{code}` | Required | Delete a link |
+| `POST` | `/api/links` | Required | Create a short link (10 per minute per user) |
+| `GET` | `/api/links/{code}` | Required | Get a link's details (owner only) |
+| `DELETE` | `/api/links/{code}` | Required | Delete a link (owner only) |
 
-**Create a link:**
+Request body for `POST /api/links`:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `url` | yes | Absolute `http` or `https` destination URL |
+| `alias` | no | Custom short code of 3–32 letters and digits; omit it to get a random 7-character code |
+| `expiresAt` | no | ISO 8601 timestamp after which the link stops resolving |
+
 ```bash
-TOKEN=$(curl -s http://localhost:8080/realms/shortener/protocol/openid-connect/token \
-  -d grant_type=password -d client_id=shortener-api \
-  -d username=alice -d password=alice | jq -r .access_token)
-
-curl -X POST http://localhost:5000/api/links \
+curl -X POST "$GATEWAY/api/links" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"url": "https://example.com", "alias": "demo", "expiresAt": null}'
+  -d '{"url": "https://example.com", "alias": "demo"}'
 ```
 
-**Response (201):**
-```json
-{
-  "code": "demo",
-  "shortUrl": "http://localhost:5000/demo",
-  "url": "https://example.com",
-  "expiresAt": null
-}
-```
+A successful call returns `201 Created` with the link's `code`, `shortUrl`, `url` and `expiresAt`.
 
 ### Redirect
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| `GET` | `/{code}` | None | 302 redirect to the destination URL |
+| `GET` | `/{code}` | None | `302 Found` redirect to the destination URL |
 
 ```bash
-curl -L http://localhost:5000/demo
+curl -i "$GATEWAY/demo"
 ```
 
 ### Analytics
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| `GET` | `/api/analytics/{code}` | Required | Click stats for a link (owner only) |
+| `GET` | `/api/analytics/{code}` | Required | Total and per-day click counts (owner only) |
 
 ```bash
-curl http://localhost:5000/api/analytics/demo \
-  -H "Authorization: Bearer $TOKEN"
+curl "$GATEWAY/api/analytics/demo" -H "Authorization: Bearer $TOKEN"
 ```
 
-**Response (200):**
 ```json
 {
   "code": "demo",
   "totalClicks": 3,
   "dailyClicks": [
-    { "date": "2026-01-15", "count": 3 }
+    { "date": "2026-09-28", "count": 3 }
   ]
 }
 ```
 
-### Error Responses
+Redirect and Analytics are fed by events over RabbitMQ, so they are eventually consistent: a new link starts resolving a moment after it is created, and clicks show up in analytics after a short delay.
 
-All errors use [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457):
+### Error responses
+
+Errors returned by the services use [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457). The Gateway's own `401` and `429` responses have no body.
 
 | Status | Meaning |
 |--------|---------|
-| 400 | Invalid input (bad URL, invalid alias) |
+| 400 | Invalid request, such as a malformed URL or an invalid alias |
 | 401 | Missing or invalid JWT |
-| 404 | Link not found or not owned by caller |
-| 409 | Alias already taken |
-| 410 | Link has expired |
-| 429 | Rate limit exceeded (10 creates/min/user) |
-| 503 | Upstream service unavailable |
+| 404 | Unknown code, expired link, or a link owned by someone else |
+| 409 | Alias already in use |
+| 429 | Link-creation rate limit exceeded (10 per minute per user) |
+| 503 | Redirect could not reach its Redis read model |
 
 ## Project Structure
 
-```
+```text
 Shortener.slnx
-Directory.Build.props               net10.0, nullable, warnings-as-errors
+Directory.Build.props               net10.0, nullable, warnings as errors, XML docs
 Directory.Packages.props            central package management
 Shortener.AppHost/                  Aspire orchestration
-Shortener.ServiceDefaults/          shared OpenTelemetry, health, resilience
+Shortener.ServiceDefaults/          shared OpenTelemetry, health checks, resilience
 src/
   Shortener.Contracts/              integration event records
-  Shortener.Gateway/                YARP + auth + rate limiting
+  Shortener.Gateway/                YARP, JWT auth, rate limiting
   Services/
     Links/Shortener.Links.Api/
     Redirect/Shortener.Redirect.Api/
@@ -190,25 +214,25 @@ tests/
   Shortener.IntegrationTests/       end-to-end via Aspire.Hosting.Testing
 ```
 
-Each service follows a consistent four-folder layout:
+Each service follows the same four-folder layout:
 
-| Folder | Responsibility | Dependencies |
-|--------|---------------|--------------|
-| `Domain/` | Entities, value objects | None (no framework types) |
-| `Application/` | Use-case handlers, interfaces | Domain only |
-| `Infrastructure/` | EF Core, Redis, RabbitMQ, HTTP clients | Application interfaces |
-| `Endpoints/` | Minimal API route mapping | Application handlers |
+| Folder | Responsibility | Depends on |
+|--------|----------------|------------|
+| `Domain/` | Entities and value objects | Nothing (no framework types) |
+| `Application/` | Use-case handlers and the interfaces they need | Domain |
+| `Infrastructure/` | EF Core, Redis and RabbitMQ implementations | Application interfaces |
+| `Endpoints/` | Minimal API route mapping only | Application handlers |
 
 ## Tech Stack
 
 | Component | Technology |
-|-----------|-----------|
+|-----------|------------|
 | Runtime | .NET 10 |
 | Orchestration | .NET Aspire 13.5 |
-| API Gateway | YARP 2.3 |
-| Auth | Keycloak + JWT Bearer |
-| Databases | PostgreSQL (via EF Core) |
-| Cache / Read Model | Redis |
+| API gateway | YARP 2.3 |
+| Authentication | Keycloak, JWT bearer |
+| Databases | PostgreSQL through EF Core |
+| Cache and read model | Redis |
 | Messaging | RabbitMQ |
 | Observability | OpenTelemetry (traces, metrics, logs) |
 | Resilience | Microsoft.Extensions.Http.Resilience (Polly) |
@@ -221,37 +245,30 @@ Each service follows a consistent four-folder layout:
 | **M1** | Links + Redirect over HTTP, cache-aside with Redis | Done |
 | **M2** | Analytics service, click events over RabbitMQ, idempotent consumers | Done |
 | **M3** | Transactional outbox, event-fed Redis read model, Redirect decoupled from Links | Done |
-| **M4** | YARP gateway, Keycloak auth, per-user rate limiting, resource ownership | Done |
+| **M4** | YARP gateway, Keycloak auth, per-user rate limiting, link ownership | Done |
 | **M5** | CI, container images, deployment | Not started |
 
-See [docs/roadmap.md](docs/roadmap.md) for detailed specs, "done when" criteria, and experiment observations for each milestone.
+See [docs/roadmap.md](docs/roadmap.md) for the detailed specs, "done when" criteria and experiment observations for each milestone.
 
 ## Design Decisions
 
-- **302 Found, never 301** -- browsers cache 301 permanently, which would hide clicks from analytics and make expiry/deletion unenforceable
-- **7-char Base62 codes** from `RandomNumberGenerator` -- cryptographically random, not guessable; unique index with 3 retry attempts on collision
-- **503 on upstream failure, never 404** -- when Links is unreachable, Redirect returns 503 and caches nothing, so an outage is never mistaken for a missing link
-- **Nullable ownership** -- `OwnerId` is nullable everywhere so pre-auth links skip ownership checks; the system is fully backward compatible
-- **Database per service** -- Analytics projects link ownership from events into its own `link_owners` table rather than querying Links' database
+- **302 Found, never 301.** Browsers cache a 301 permanently, which would hide clicks from analytics and make expiry and deletion unenforceable.
+- **Unguessable short codes.** Generated codes are 7 Base62 characters from `RandomNumberGenerator`, backed by a unique index; a collision is retried up to 3 times. Custom aliases never retry: a collision is a `409`.
+- **Only absolute `http` and `https` URLs** are accepted as destinations.
+- **503, never a false 404.** If Redirect cannot reach its Redis read model it answers 503 instead of reporting the link as missing.
+- **Clicks are best-effort, links are not.** Click events pass through a bounded in-memory buffer so a redirect never waits on the broker (an occasional click may be dropped), while link changes go through the transactional outbox and are never lost.
+- **Nullable ownership.** `OwnerId` is optional, so links created without authentication skip ownership checks and existing data keeps working.
+- **Database per service.** Analytics projects link ownership from events into its own `link_owners` table instead of querying the Links database.
 
 ## Testing
 
-**69 unit tests** covering domain logic, value object validation, handler behavior, and ownership enforcement.
-
-**7 integration tests** (require Docker) proving end-to-end flows:
-- Link creation through the full pipeline
-- Redirect via the event-fed read model
-- Click analytics event propagation
-- Gateway auth (401 without token)
-- Anonymous redirects through the gateway
-- Cross-user ownership isolation (404 for another user's analytics)
-- Rate limiting (429 on burst)
+Unit tests cover domain logic, validation and the use-case handlers, including ownership enforcement. Integration tests use `Aspire.Hosting.Testing` to start the whole system with real Postgres, Redis, RabbitMQ and Keycloak containers, and cover link creation and redirects through the read model, click analytics, gateway authentication, ownership isolation between users and rate limiting.
 
 ```bash
 # Unit tests only (no Docker needed)
 dotnet test --filter "FullyQualifiedName!~IntegrationTests"
 
-# All tests (Docker required)
+# Everything, including integration tests (Docker required)
 dotnet test
 ```
 
