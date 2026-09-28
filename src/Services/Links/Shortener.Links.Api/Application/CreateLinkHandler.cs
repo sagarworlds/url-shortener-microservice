@@ -39,14 +39,14 @@ public sealed class CreateLinkHandler(
                 return CreateLinkResult.Invalid(aliasResult.Error!);
             }
 
-            var link = CreateLink(aliasResult.Value!, urlResult.Value!, request.ExpiresAt);
+            var link = CreateLink(aliasResult.Value!, urlResult.Value!, request);
             var added = await repository.TryAddAsync(link, CreatedEventFor(link), cancellationToken);
             return added ? CreateLinkResult.Created(link) : CreateLinkResult.AliasTaken();
         }
 
         for (var attempt = 0; attempt < MaxGenerationAttempts; attempt++)
         {
-            var link = CreateLink(codeGenerator.Generate(), urlResult.Value!, request.ExpiresAt);
+            var link = CreateLink(codeGenerator.Generate(), urlResult.Value!, request);
             if (await repository.TryAddAsync(link, CreatedEventFor(link), cancellationToken))
             {
                 return CreateLinkResult.Created(link);
@@ -56,9 +56,9 @@ public sealed class CreateLinkHandler(
         throw new ShortCodeGenerationExhaustedException();
     }
 
-    private Link CreateLink(ShortCode code, DestinationUrl url, DateTimeOffset? expiresAt) =>
-        new(Guid.NewGuid(), code, url, timeProvider.GetUtcNow(), expiresAt);
+    private Link CreateLink(ShortCode code, DestinationUrl url, CreateLinkRequest request) =>
+        new(Guid.NewGuid(), code, url, timeProvider.GetUtcNow(), request.ExpiresAt, request.OwnerId);
 
-    private LinkCreated CreatedEventFor(Link link) =>
-        new(Guid.NewGuid(), link.Code.Value, link.DestinationUrl.Value.ToString(), link.ExpiresAt, link.CreatedAt);
+    private static LinkCreated CreatedEventFor(Link link) =>
+        new(Guid.NewGuid(), link.Code.Value, link.DestinationUrl.Value.ToString(), link.ExpiresAt, link.CreatedAt, link.OwnerId);
 }

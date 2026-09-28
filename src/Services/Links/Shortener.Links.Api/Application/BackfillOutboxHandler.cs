@@ -19,7 +19,8 @@ public sealed class BackfillOutboxHandler(ILinkRepository repository, IOutboxSto
                 link.Code.Value,
                 link.DestinationUrl.Value.ToString(),
                 link.ExpiresAt,
-                link.CreatedAt);
+                link.CreatedAt,
+                link.OwnerId);
 
             outboxStore.Enqueue(createdEvent);
         }

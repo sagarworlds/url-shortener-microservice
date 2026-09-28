@@ -9,4 +9,5 @@ namespace Shortener.Contracts;
 /// <param name="Url">The destination URL.</param>
 /// <param name="ExpiresAt">When the link stops resolving, or <see langword="null"/> if it never expires.</param>
 /// <param name="OccurredAt">When the link was created.</param>
-public sealed record LinkCreated(Guid EventId, string Code, string Url, DateTimeOffset? ExpiresAt, DateTimeOffset OccurredAt);
+/// <param name="OwnerId">The identity of the user who created this link, or <see langword="null"/> for pre-auth links.</param>
+public sealed record LinkCreated(Guid EventId, string Code, string Url, DateTimeOffset? ExpiresAt, DateTimeOffset OccurredAt, string? OwnerId = null);

@@ -36,6 +36,7 @@ public sealed class LinksDbContext(DbContextOptions<LinksDbContext> options) : D
 
             entity.Property(link => link.CreatedAt).IsRequired();
             entity.Property(link => link.ExpiresAt);
+            entity.Property(link => link.OwnerId);
         });
 
         modelBuilder.Entity<OutboxMessage>(entity =>

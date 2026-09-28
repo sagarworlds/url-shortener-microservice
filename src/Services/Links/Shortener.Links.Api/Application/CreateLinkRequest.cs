@@ -6,4 +6,5 @@ namespace Shortener.Links.Api.Application;
 /// An optional caller-chosen short code. When omitted, one is generated.
 /// </param>
 /// <param name="ExpiresAt">When the link should stop resolving, or <see langword="null"/> for no expiry.</param>
-public sealed record CreateLinkRequest(string Url, string? Alias, DateTimeOffset? ExpiresAt);
+/// <param name="OwnerId">The identity of the authenticated user, or <see langword="null"/> for unauthenticated calls.</param>
+public sealed record CreateLinkRequest(string Url, string? Alias, DateTimeOffset? ExpiresAt, string? OwnerId = null);
