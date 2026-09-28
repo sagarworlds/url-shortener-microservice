@@ -48,7 +48,7 @@ public class ClickAnalyticsEndToEndTests
         {
             BaseAddress = app.GetEndpoint("redirect", "http"),
         };
-        using var redirectResponse = await redirectHttpClient.GetAsync($"/{created!.Code}", cancellationToken);
+        using var redirectResponse = await PollForRedirectAsync(redirectHttpClient, created!.Code, cancellationToken);
         Assert.Equal(HttpStatusCode.Redirect, redirectResponse.StatusCode);
 
         using var analyticsHttpClient = app.CreateHttpClient("analytics");
@@ -57,6 +57,26 @@ public class ClickAnalyticsEndToEndTests
         Assert.NotNull(stats);
         Assert.Equal(created.Code, stats!.Code);
         Assert.Equal(1, stats.TotalClicks);
+    }
+
+    private static async Task<HttpResponseMessage> PollForRedirectAsync(
+        HttpClient redirectHttpClient,
+        string code,
+        CancellationToken cancellationToken)
+    {
+        for (var attempt = 0; attempt < 20; attempt++)
+        {
+            var response = await redirectHttpClient.GetAsync($"/{code}", cancellationToken);
+            if (response.StatusCode == HttpStatusCode.Redirect)
+            {
+                return response;
+            }
+
+            response.Dispose();
+            await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken);
+        }
+
+        throw new TimeoutException($"Code '{code}' never resolved through the read model.");
     }
 
     private static async Task<AnalyticsResponse?> PollForClickAsync(
