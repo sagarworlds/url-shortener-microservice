@@ -38,6 +38,20 @@ namespace Shortener.Analytics.Api.Migrations
                     b.ToTable("daily_click_counts", (string)null);
                 });
 
+            modelBuilder.Entity("Shortener.Analytics.Api.Domain.LinkOwner", b =>
+                {
+                    b.Property<string>("Code")
+                        .HasColumnType("text");
+
+                    b.Property<string>("OwnerId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Code");
+
+                    b.ToTable("link_owners", (string)null);
+                });
+
             modelBuilder.Entity("Shortener.Analytics.Api.Infrastructure.ProcessedEvent", b =>
                 {
                     b.Property<Guid>("EventId")

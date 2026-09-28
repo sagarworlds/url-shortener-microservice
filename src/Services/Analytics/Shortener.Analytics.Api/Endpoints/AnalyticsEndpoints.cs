@@ -17,11 +17,16 @@ public static class AnalyticsEndpoints
 
     private static async Task<IResult> GetAnalyticsAsync(
         string code,
+        HttpRequest httpRequest,
         GetClickStatsHandler handler,
         CancellationToken cancellationToken)
     {
-        var stats = await handler.HandleAsync(code, cancellationToken);
-        return Results.Ok(ToResponse(stats));
+        var callerId = httpRequest.Headers["X-User-Id"].FirstOrDefault();
+        var result = await handler.HandleAsync(code, callerId, cancellationToken);
+
+        return result.IsFound
+            ? Results.Ok(ToResponse(result.Stats!))
+            : Results.Problem(statusCode: StatusCodes.Status404NotFound, title: "Link not found");
     }
 
     private static AnalyticsResponse ToResponse(ClickStats stats) => new(

@@ -20,10 +20,15 @@ public static class ServiceCollectionExtensions
         builder.Services.AddScoped<IClickRecorder>(sp => sp.GetRequiredService<EfClickStore>());
         builder.Services.AddScoped<IClickStatsQuery>(sp => sp.GetRequiredService<EfClickStore>());
 
+        builder.Services.AddScoped<EfLinkOwnerStore>();
+        builder.Services.AddScoped<ILinkOwnerStore>(sp => sp.GetRequiredService<EfLinkOwnerStore>());
+        builder.Services.AddScoped<ILinkOwnerQuery>(sp => sp.GetRequiredService<EfLinkOwnerStore>());
+
         builder.Services.AddScoped<RecordClickHandler>();
         builder.Services.AddScoped<GetClickStatsHandler>();
 
         builder.Services.AddHostedService<ClickEventConsumer>();
+        builder.Services.AddHostedService<LinkOwnerEventConsumer>();
 
         return builder;
     }

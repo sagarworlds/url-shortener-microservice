@@ -13,6 +13,9 @@ public sealed class AnalyticsDbContext(DbContextOptions<AnalyticsDbContext> opti
     /// <summary>Event ids already applied, for idempotent redelivery.</summary>
     internal DbSet<ProcessedEvent> ProcessedEvents => Set<ProcessedEvent>();
 
+    /// <summary>Link-to-owner mapping projected from <c>LinkCreated</c> events.</summary>
+    public DbSet<LinkOwner> LinkOwners => Set<LinkOwner>();
+
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -28,6 +31,14 @@ public sealed class AnalyticsDbContext(DbContextOptions<AnalyticsDbContext> opti
             entity.ToTable("processed_events");
             entity.HasKey(processed => processed.EventId);
             entity.Property(processed => processed.ProcessedAt).IsRequired();
+        });
+
+        modelBuilder.Entity<LinkOwner>(entity =>
+        {
+            entity.ToTable("link_owners");
+            entity.HasKey(owner => owner.Code);
+            entity.Property(owner => owner.Code).IsRequired();
+            entity.Property(owner => owner.OwnerId).IsRequired();
         });
     }
 }
