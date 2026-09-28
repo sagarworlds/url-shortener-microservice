@@ -15,14 +15,20 @@ var links = builder.AddProject<Projects.Shortener_Links_Api>("links")
 // model now, fed by Links' outbox over messaging, not by calling Links
 // directly. No WaitFor(messaging) either: publishing/consuming is
 // best-effort, so a slow-to-start broker must not block startup.
-builder.AddProject<Projects.Shortener_Redirect_Api>("redirect")
+var redirect = builder.AddProject<Projects.Shortener_Redirect_Api>("redirect")
     .WithReference(redis)
     .WithReference(messaging)
     .WaitFor(redis);
 
-builder.AddProject<Projects.Shortener_Analytics_Api>("analytics")
+var analytics = builder.AddProject<Projects.Shortener_Analytics_Api>("analytics")
     .WithReference(analyticsDb)
     .WaitFor(analyticsDb)
     .WithReference(messaging);
+
+builder.AddProject<Projects.Shortener_Gateway>("gateway")
+    .WithReference(links)
+    .WithReference(redirect)
+    .WithReference(analytics)
+    .WithExternalHttpEndpoints();
 
 builder.Build().Run();

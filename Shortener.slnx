@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Shortener.Contracts/Shortener.Contracts.csproj" />
+    <Project Path="src/Shortener.Gateway/Shortener.Gateway.csproj" />
   </Folder>
   <Folder Name="/src/Services/" />
   <Folder Name="/src/Services/Analytics/">
