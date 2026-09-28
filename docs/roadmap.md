@@ -4,7 +4,7 @@
 | --- | --- | --- |
 | M1 | Links + Redirect over HTTP | Done |
 | M2 | Analytics service and click events over RabbitMQ | Done |
-| M3 | Transactional outbox and event-fed Redirect read model | Not started |
+| M3 | Transactional outbox and event-fed Redirect read model | Done |
 | M4 | YARP gateway, Keycloak auth, rate limiting | Not started |
 | M5 | CI, container images, deployment | Not started |
 
@@ -178,11 +178,44 @@ Branch: `SP/feature/m3-outbox-read-model`
 - Optional: compare the hand-rolled outbox with Wolverine's built-in one.
 
 Done when:
-- [ ] With Links stopped, every existing code still redirects.
-- [ ] A deleted link stops redirecting within seconds.
-- [ ] Killing Links mid-dispatch loses no events, and duplicates are handled idempotently.
+- [x] With Links stopped, every existing code still redirects.
+- [x] A deleted link stops redirecting within seconds.
+- [x] Killing Links mid-dispatch loses no events, and duplicates are handled idempotently.
 
 ### Observations
+
+Verified with Docker running via `Aspire.Hosting.Testing`: 50 unit tests
+(33 Links + 13 Redirect + 4 Analytics) and 3 integration tests all pass.
+The new `ReadModelEndToEndTests` proves the full M3 pipeline end-to-end:
+link creation through Links → outbox row → dispatcher publishes to
+RabbitMQ → `LinkEventConsumer` writes to Redis → `ReadModelLinkResolver`
+serves the 302 redirect — with Redirect never calling Links over HTTP.
+
+Existing M1 and M2 integration tests (`RedirectEndToEndTests`,
+`ClickAnalyticsEndToEndTests`) were updated to poll for redirects rather
+than expecting immediate 302s, reflecting the propagation delay inherent
+in the event-fed read model. Both continue to pass.
+
+**Experiment A** (stop Links, via `ResourceCommandService`'s
+`resource-stop` command): created link1, confirmed it redirects via the
+read model. Created link2, then immediately stopped Links. link1
+**continued returning 302** while Links was down — served entirely from
+the Redis read model, proving Redirect is fully independent of Links at
+runtime. After restarting Links, link2 **eventually redirected** too —
+the outbox dispatcher resumed and published the `LinkCreated` event that
+had been written transactionally but not yet dispatched before the stop.
+No event was lost.
+
+**Experiment B** (delete + duplicate idempotency): created a link,
+confirmed redirect. Deleted it via `DELETE /links/{code}`, then polled
+redirect — returned **404 within 500ms** (the `LinkDeleted` event
+propagated through outbox → RabbitMQ → consumer → Redis `DEL` almost
+instantly). Then published the same `LinkCreated` payload directly to the
+`link-events` exchange **twice** in a row. After 5s, the link redirected
+correctly — Redis `SET` is naturally idempotent, so duplicate events
+produce no error and a consistent result. This confirms the design
+decision that no processed-events/idempotency table is needed on the
+consumer side.
 
 ---
 

@@ -2,10 +2,12 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\..\Shortener.ServiceDefaults\Shortener.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\..\..\Shortener.Contracts\Shortener.Contracts.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Aspire.Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="Aspire.RabbitMQ.Client" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>

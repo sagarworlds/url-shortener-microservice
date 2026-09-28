@@ -8,14 +8,15 @@ var messaging = builder.AddRabbitMQ("messaging").WithManagementPlugin();
 
 var links = builder.AddProject<Projects.Shortener_Links_Api>("links")
     .WithReference(linksDb)
-    .WaitFor(linksDb);
+    .WaitFor(linksDb)
+    .WithReference(messaging);
 
-// No WaitFor(links) or WaitFor(messaging): Redirect must start and keep
-// serving cached links while Links is down, and publishing a click is
-// best-effort, so a slow-to-start broker must not block the hot path either.
+// No WithReference(links): Redirect resolves codes from its own Redis read
+// model now, fed by Links' outbox over messaging, not by calling Links
+// directly. No WaitFor(messaging) either: publishing/consuming is
+// best-effort, so a slow-to-start broker must not block startup.
 builder.AddProject<Projects.Shortener_Redirect_Api>("redirect")
     .WithReference(redis)
-    .WithReference(links)
     .WithReference(messaging)
     .WaitFor(redis);
 
