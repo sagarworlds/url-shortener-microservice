@@ -5,7 +5,7 @@
 | M1 | Links + Redirect over HTTP | Done |
 | M2 | Analytics service and click events over RabbitMQ | Done |
 | M3 | Transactional outbox and event-fed Redirect read model | Done |
-| M4 | YARP gateway, Keycloak auth, rate limiting | Not started |
+| M4 | YARP gateway, Keycloak auth, rate limiting | Done |
 | M5 | CI, container images, deployment | Not started |
 
 ## How to run a milestone
@@ -228,10 +228,59 @@ Branch: `SP/feature/m4-gateway-auth`
 - ASP.NET Core rate limiting on link creation, per user.
 
 Done when:
-- [ ] An unauthenticated `POST /api/links` returns 401, another user's analytics returns 404 (so link existence isn't revealed), and a burst of creates returns 429.
-- [ ] Redirects work anonymously through the gateway.
+- [x] An unauthenticated `POST /api/links` returns 401, another user's analytics returns 404 (so link existence isn't revealed), and a burst of creates returns 429.
+- [x] Redirects work anonymously through the gateway.
 
 ### Observations
+
+Implementation is complete. Four integration tests in
+`GatewayAuthEndToEndTests` prove the criteria end-to-end through the
+YARP gateway, each exercising a different aspect of the auth and rate
+limiting pipeline:
+
+1. **PostLinks_WithoutToken_Returns401** — a bare `POST /api/links`
+   with no JWT returns 401, proving the `links-write` YARP route's
+   Default authorization policy rejects unauthenticated callers.
+
+2. **GetRedirect_Anonymous_Returns302** — a link created on Links
+   (bypassing the gateway to isolate the redirect-route test)
+   resolves through the gateway's `/{**catch-all}` route with no token,
+   proving anonymous redirects work through the proxy.
+
+3. **GetAnalytics_ForOtherUsersLink_Returns404** — alice creates a
+   link through the gateway (her `sub` becomes OwnerId via the
+   X-User-Id transform), then bob requests analytics for the same
+   code and gets 404 once the `LinkOwnerEventConsumer` has projected
+   ownership into `link_owners`. This proves the full ownership
+   pipeline: Gateway JWT → X-User-Id header → Links OwnerId → outbox →
+   RabbitMQ → Analytics ownership projection → handler check.
+
+4. **PostLinks_BurstExceedsLimit_Returns429** — 15 rapid `POST
+   /api/links` requests from alice trigger the `create-link` fixed-
+   window rate limiter (10 permits/min), and at least one returns 429.
+
+**Architecture notes:**
+
+- Keycloak is integrated via `AddContainer` with a realm JSON import
+  (no first-party Aspire package exists). Fixed host port 8080 keeps
+  the JWT `iss` claim aligned with the Gateway's configured Authority.
+
+- The Gateway strips incoming `X-User-Id` headers (anti-spoofing) and
+  injects the JWT `sub` claim via a YARP request transform. Backend
+  services read this header and treat its absence as "no ownership
+  filter" — all pre-M4 tests pass unchanged.
+
+- Analytics enforces ownership without querying Links' database: a
+  `LinkOwnerEventConsumer` on the `link-events.analytics` queue
+  maintains a `link_owners` projection table from `LinkCreated` /
+  `LinkDeleted` events, honouring the database-per-service boundary.
+
+- `OwnerId` is nullable everywhere. Pre-auth links (OwnerId = null)
+  skip ownership checks, so the M4 changes are fully backward
+  compatible.
+
+69 unit tests (47 Links + 13 Redirect + 9 Analytics) and the 4
+gateway integration tests all pass (Docker required for integration).
 
 ---
 
